@@ -19,7 +19,6 @@ BROWSER_HEADERS: dict[str, str] = {
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
     "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-    "Accept-Encoding": "gzip, deflate, br",
     "Sec-Fetch-Dest": "document",
     "Sec-Fetch-Mode": "navigate",
     "Sec-Fetch-Site": "none",
@@ -47,8 +46,26 @@ class FetchResult:
     used_strategy: str  # "httpx", "playwright", "stealth"
 
 
+def _extract_text_from_html(html: str) -> str:
+    """Strip all tags, script and style content to get visible text."""
+    # Remove <script>...</script> and <style>...</style> blocks entirely
+    text = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    # Remove remaining HTML tags
+    text = re.sub(r"<[^>]+>", "", text)
+    # Collapse whitespace
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
 def needs_browser_fallback(html: str, min_length: int = _MIN_CONTENT_LENGTH) -> bool:
-    """Determine if the HTML content indicates a need for browser fallback."""
+    """Determine if the HTML content indicates a need for browser fallback.
+
+    Checks:
+    1. Total HTML too short → likely empty shell
+    2. Known SPA framework markers → React/Next/Nuxt/etc.
+    3. Low text-to-HTML ratio → content is in JS, not in DOM
+    """
     if len(html.strip()) < min_length:
         return True
 
@@ -61,6 +78,12 @@ def needs_browser_fallback(html: str, min_length: int = _MIN_CONTENT_LENGTH) -> 
             text_only = re.sub(r"<[^>]+>", "", text_content).strip()
             if len(text_only) < min_length:
                 return True
+
+    # Text-to-HTML ratio check: large HTML but very little visible text
+    # means content is rendered by JavaScript, not present in the DOM.
+    visible_text = _extract_text_from_html(html)
+    if len(html) > 5000 and len(visible_text) < min_length:
+        return True
 
     return False
 
