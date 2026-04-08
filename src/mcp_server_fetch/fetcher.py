@@ -37,6 +37,21 @@ _SPA_MARKERS = [
     'id="__nuxt"',
 ]
 
+# Anti-bot / WAF challenge markers in HTML
+_ANTI_BOT_MARKERS = [
+    "captcha",
+    "cf-browser-verification",
+    "cf_chl_opt",
+    "challenge-platform",
+    "ac_captcha",
+    "sliderverify",
+    "checkbrowser",
+    "验证",
+    "请进行验证",
+    "安全验证",
+    "CF_APP_WAF",
+]
+
 
 @dataclass
 class FetchResult:
@@ -84,6 +99,11 @@ def needs_browser_fallback(html: str, min_length: int = _MIN_CONTENT_LENGTH) -> 
     visible_text = _extract_text_from_html(html)
     if len(html) > 5000 and len(visible_text) < min_length:
         return True
+
+    # Anti-bot / WAF challenge detection
+    for marker in _ANTI_BOT_MARKERS:
+        if marker.lower() in lower:
+            return True
 
     return False
 

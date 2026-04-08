@@ -41,6 +41,15 @@ def test_needs_browser_fallback_large_html_no_text():
     assert needs_browser_fallback(html, 200) is True
 
 
+def test_needs_browser_fallback_anti_bot():
+    """Anti-bot / WAF challenge pages should trigger fallback."""
+    html = '<html><body><p>Please verify</p><script>var CF_APP_WAF = true;</script></body></html>'
+    assert needs_browser_fallback(html, 200) is True
+
+    html2 = '<html><body><div id="captcha">slider verify</div></body></html>'
+    assert needs_browser_fallback(html2, 200) is True
+
+
 def test_fetch_result_dataclass():
     result = FetchResult(content="hello", prefix="info: ", used_strategy="httpx")
     assert result.content == "hello"
