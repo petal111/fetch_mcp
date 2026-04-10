@@ -18,8 +18,5 @@ huxiu_raw.html
 .vscode/
 *.swp
 
-# Docs temp
-docs/
-
 # pytest
 .pytest_cache/
