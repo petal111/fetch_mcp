@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Test output
+test_output*.md
+test_news_output*.md
+debug_imgs.txt
+huxiu_raw.html
+
+# IDE
+.claude/
+.idea/
+.vscode/
+*.swp
+
+# Docs temp
+docs/
+
+# pytest
+.pytest_cache/
