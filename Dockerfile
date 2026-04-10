@@ -12,9 +12,9 @@ COPY src/ src/
 RUN pip install --no-cache-dir ".[browser]" \
     && playwright install chromium --with-deps
 
-ENV TRANSPORT=sse
+ENV TRANSPORT=streamable-http
 ENV HOST=0.0.0.0
-ENV PORT=8080
+ENV PORT=30001
 
-EXPOSE 8080
-CMD ["python", "-m", "mcp_server_fetch", "--transport", "sse", "--port", "8080"]
+EXPOSE 30001
+CMD ["python", "-m", "mcp_server_fetch", "--transport", "streamable-http", "--port", "30001"]

@@ -1,5 +1,5 @@
 import argparse
-import asyncio
+import logging
 import sys
 
 
@@ -7,7 +7,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="MCP Fetch Server")
     parser.add_argument(
         "--transport",
-        choices=["stdio", "sse"],
+        choices=["stdio", "sse", "streamable-http"],
         default="stdio",
         help="Transport mode (default: stdio)",
     )
@@ -15,7 +15,7 @@ def main() -> None:
         "--port",
         type=int,
         default=8080,
-        help="Port for SSE mode (default: 8080)",
+        help="Port for HTTP transport modes (default: 8080)",
     )
     parser.add_argument(
         "--ignore-robots-txt",
@@ -48,18 +48,18 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    logging.basicConfig(level=logging.INFO)
+
     from mcp_server_fetch.server import run_server
 
-    asyncio.run(
-        run_server(
-            transport=args.transport,
-            port=args.port,
-            ignore_robots_txt=args.ignore_robots_txt,
-            user_agent=args.user_agent,
-            proxy_url=args.proxy_url,
-            stealth=args.stealth,
-            cookies_path=args.cookies,
-        )
+    run_server(
+        transport=args.transport,
+        port=args.port,
+        ignore_robots_txt=args.ignore_robots_txt,
+        user_agent=args.user_agent,
+        proxy_url=args.proxy_url,
+        stealth=args.stealth,
+        cookies_path=args.cookies,
     )
 
 
