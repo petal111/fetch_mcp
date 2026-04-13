@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
@@ -27,13 +28,14 @@ def create_app(
     proxy_url: str | None = None,
     stealth: bool = False,
     cookies_path: str | None = None,
+    stateless_http: bool = True,
 ) -> FastMCP:
     """Create and configure the MCP fetch server using FastMCP."""
     ua = user_agent or DEFAULT_USER_AGENT
 
     mcp = FastMCP(
         "mcp-fetch",
-        stateless_http=True,
+        stateless_http=stateless_http,
         json_response=True,
     )
 
@@ -102,6 +104,22 @@ def create_app(
                     )
 
         prefix = result.prefix
+        # For SPA fallback, append a context-aware note based on extracted content quality
+        if result.used_strategy == "httpx-spa-fallback" and not raw:
+            if original_length < 500:
+                prefix += (
+                    "NOTE: This is a JavaScript-rendered page (SPA) and no browser "
+                    "was available to render it. The extracted content below is "
+                    "extremely limited (navigation elements only). "
+                    "Do NOT fabricate or infer the actual page content. "
+                    "Inform the user that this page could not be properly fetched.\n\n"
+                )
+            else:
+                prefix += (
+                    "NOTE: This page was detected as JavaScript-rendered (SPA). "
+                    "The content below was extracted from raw HTML without browser "
+                    "rendering — some dynamic content may be missing.\n\n"
+                )
         return f"{prefix}Contents of {url}:\n{content}"
 
     return mcp
@@ -117,12 +135,16 @@ def run_server(
     cookies_path: str | None = None,
 ) -> None:
     """Create and run the MCP fetch server with the specified transport."""
+    # Only enable stateless_http for HTTP transports;
+    # STDIO platforms (e.g. ModelScope MCP Hub) may not support it.
+    is_http = transport in ("streamable-http", "sse")
     mcp = create_app(
         ignore_robots_txt=ignore_robots_txt,
         user_agent=user_agent,
         proxy_url=proxy_url,
         stealth=stealth,
         cookies_path=cookies_path,
+        stateless_http=is_http,
     )
 
     if transport in ("streamable-http", "sse"):
@@ -130,30 +152,38 @@ def run_server(
         from starlette.applications import Starlette
         from starlette.middleware import Middleware
         from starlette.middleware.cors import CORSMiddleware
-        from starlette.routing import Mount
+        from starlette.responses import JSONResponse
+        from starlette.routing import Mount, Route
+
+        async def health_check(request):
+            return JSONResponse({"status": "ok"})
 
         if transport == "streamable-http":
             asgi_app = mcp.streamable_http_app()
-
-            @contextlib.asynccontextmanager
-            async def lifespan(app: Starlette):
-                async with mcp.session_manager.run():
-                    yield
         else:
             asgi_app = mcp.sse_app()
-            lifespan = None
 
+        @contextlib.asynccontextmanager
+        async def lifespan(app: Starlette):
+            async with mcp.session_manager.run():
+                yield
+
+        _cors_origins = os.environ.get("CORS_ORIGINS", "*").split(",")
         middleware = [
             Middleware(
                 CORSMiddleware,
-                allow_origins=["*"],
-                allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+                allow_origins=_cors_origins,
+                allow_methods=["GET", "POST", "OPTIONS"],
+                allow_headers=["Content-Type", "Authorization", "Accept"],
                 expose_headers=["Mcp-Session-Id"],
             )
         ]
 
         app = Starlette(
-            routes=[Mount("/", app=asgi_app)],
+            routes=[
+                Route("/health", health_check),
+                Mount("/", app=asgi_app),
+            ],
             middleware=middleware,
             lifespan=lifespan,
         )

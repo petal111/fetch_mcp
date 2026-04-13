@@ -46,7 +46,6 @@ _ANTI_BOT_MARKERS = [
     "ac_captcha",
     "sliderverify",
     "checkbrowser",
-    "验证",
     "请进行验证",
     "安全验证",
     "CF_APP_WAF",
@@ -250,6 +249,8 @@ async def smart_fetch(
             )
 
     # L1: httpx
+    l1_content: str | None = None
+    l1_prefix: str = ""
     try:
         content, prefix = await _fetch_with_httpx(
             url, user_agent=user_agent, proxy_url=proxy_url,
@@ -267,6 +268,10 @@ async def smart_fetch(
 
         if not needs_browser_fallback(content):
             return FetchResult(content=content, prefix=prefix, used_strategy="httpx")
+
+        # Save L1 content for fallback when browser is unavailable
+        l1_content = content
+        l1_prefix = prefix
 
     except McpError as e:
         errors.append(f"L1 (httpx): {e}")
@@ -293,7 +298,17 @@ async def smart_fetch(
     except McpError as e:
         errors.append(f"L3 (stealth): {e}")
 
-    # All strategies failed
+    # All browser strategies failed — return L1 httpx content as fallback
+    # instead of raising an error, so the model won't fabricate content.
+    # The server layer will add an appropriate warning based on content quality.
+    if l1_content:
+        return FetchResult(
+            content=l1_content,
+            prefix=l1_prefix,
+            used_strategy="httpx-spa-fallback",
+        )
+
+    # No L1 content at all
     error_summary = "\n".join(errors)
     raise McpError(
         ErrorData(
