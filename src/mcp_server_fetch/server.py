@@ -4,6 +4,8 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import subprocess
+import sys
 from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
@@ -14,6 +16,39 @@ from mcp_server_fetch.fetcher import smart_fetch
 from mcp_server_fetch.robots import check_may_fetch_url
 
 logger = logging.getLogger(__name__)
+
+
+def _is_chromium_installed() -> bool:
+    """Check if Playwright's Chromium browser binary exists."""
+    browsers_path = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    if not browsers_path:
+        browsers_path = os.path.join(os.path.expanduser("~"), ".cache", "ms-playwright")
+    if not os.path.exists(browsers_path):
+        return False
+    return any(d.startswith("chromium-") for d in os.listdir(browsers_path))
+
+
+def _ensure_chromium() -> None:
+    """Auto-install Chromium on first run if not present."""
+    if _is_chromium_installed():
+        logger.info("Chromium already installed, skipping auto-install")
+        return
+
+    logger.info("Chromium not found, auto-installing (first run only)...")
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode == 0:
+            logger.info("Chromium installed successfully")
+        else:
+            logger.warning(f"Chromium install failed: {result.stderr}")
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        logger.warning(f"Chromium auto-install skipped: {e}")
+
 
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -135,6 +170,8 @@ def run_server(
     cookies_path: str | None = None,
 ) -> None:
     """Create and run the MCP fetch server with the specified transport."""
+    _ensure_chromium()
+
     # Only enable stateless_http for HTTP transports;
     # STDIO platforms (e.g. ModelScope MCP Hub) may not support it.
     is_http = transport in ("streamable-http", "sse")
