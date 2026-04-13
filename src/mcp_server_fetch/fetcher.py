@@ -190,8 +190,18 @@ async def _fetch_with_playwright(
                 await _inject_stealth(context)
 
             page = await context.new_page()
-            await page.goto(url, wait_until="networkidle", timeout=30000)
-            await page.wait_for_timeout(1000)
+            # Step 1: Wait for DOM parsing (fast, usually 1-3s)
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+
+            # Step 2: Try network idle with short timeout (enough for fast pages)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=10000)
+            except TimeoutError:
+                # SPA pages never go idle, but JS rendering is likely done
+                pass
+
+            # Step 3: Fixed wait for async-rendered content to complete
+            await page.wait_for_timeout(2000)
             content = await page.content()
             await browser.close()
             return content, ""
