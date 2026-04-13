@@ -2,8 +2,12 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 import random
 import re
+import subprocess
+import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -28,6 +32,50 @@ BROWSER_HEADERS: dict[str, str] = {
 }
 
 _MIN_CONTENT_LENGTH = 200
+
+logger = logging.getLogger(__name__)
+
+# Flag to track if Chromium auto-install has been attempted
+_chromium_install_attempted = False
+
+
+def _is_chromium_installed() -> bool:
+    """Check if Playwright's Chromium browser binary exists."""
+    browsers_path = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    if not browsers_path:
+        browsers_path = os.path.join(
+            os.path.expanduser("~"), ".cache", "ms-playwright"
+        )
+    if not os.path.exists(browsers_path):
+        return False
+    return any(d.startswith("chromium-") for d in os.listdir(browsers_path))
+
+
+def _ensure_chromium_lazy() -> None:
+    """Lazy-install Chromium on first Playwright use (not at server startup)."""
+    global _chromium_install_attempted
+    if _chromium_install_attempted:
+        return
+    _chromium_install_attempted = True
+
+    if _is_chromium_installed():
+        logger.info("Chromium already installed")
+        return
+
+    logger.info("Chromium not found, auto-installing...")
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode == 0:
+            logger.info("Chromium installed successfully")
+        else:
+            logger.warning(f"Chromium install failed: {result.stderr}")
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        logger.warning(f"Chromium auto-install skipped: {e}")
 
 _SPA_MARKERS = [
     '<div id="root"></div>',
@@ -159,6 +207,8 @@ async def _fetch_with_playwright(
 ) -> tuple[str, str]:
     """Fetch URL using Playwright headless browser."""
     from playwright.async_api import async_playwright
+
+    _ensure_chromium_lazy()
 
     try:
         async with async_playwright() as pw:
